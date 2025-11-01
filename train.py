@@ -11,7 +11,7 @@ from terminal_bench.terminal.tmux_session import TmuxSession
 from dataset import Dataset, DatasetConfig
 
 from gepa import optimize
-from adapter2 import (
+from adapter import (
     TerminalBenchTask,
     Terminus2Adapter,
 )
@@ -77,12 +77,14 @@ class Terminus2Wrapper(Terminus2):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, default="gpt-5-mini")
+    parser.add_argument("--model_name", type=str, default="anthropic/claude-sonnet-4-5-20250929",
+                        help="Model name to use for the agent")
     parser.add_argument("--api_base", type=str, default=None,
                         help="API base URL for custom providers (e.g., https://api.deepinfra.com/)")
-    parser.add_argument("--n_concurrent", type=int, default=40)
+    parser.add_argument("--n_concurrent", type=int, default=40,
+                        help="Number of concurrent tasks to run")
     parser.add_argument("--task_directory", type=str, default=None,
-                        help="Absolute path to the task directory (e.g., /home/shivank/work/terminal-bench-replay/tasks2)")
+                        help="Absolute path to the task directory")
     parser.add_argument("--train_size", type=int, default=7,
                         help="Number of tasks in training set")
     parser.add_argument("--val_size", type=int, default=8,
@@ -91,6 +93,20 @@ if __name__ == "__main__":
                         help="Number of tasks in test set")
     parser.add_argument("--random_seed", type=int, default=42,
                         help="Random seed for reproducible task splitting")
+    parser.add_argument("--output_dir", type=str, default="gepa_output",
+                        help="Output directory for GEPA results and logs")
+    parser.add_argument("--optimized_prompt_file", type=str, default="optimized.txt",
+                        help="Filename to save the optimized prompt")
+    parser.add_argument("--max_metric_calls", type=int, default=100,
+                        help="Maximum number of metric evaluation calls during optimization")
+    parser.add_argument("--reflection_minibatch_size", type=int, default=3,
+                        help="Number of examples to use in each reflection minibatch")
+    parser.add_argument("--perfect_score", type=float, default=1.0,
+                        help="Perfect score threshold for optimization")
+    parser.add_argument("--skip_perfect_score", action="store_true",
+                        help="Skip early stopping when perfect score is reached")
+    parser.add_argument("--use_wandb", action="store_true", default=True,
+                        help="Enable Weights & Biases logging")
     args = parser.parse_args()
 
 
@@ -170,10 +186,9 @@ IMPORTANT:
     print(f"Test set ({len(testset)}): {[t.task_id for t in testset]}")
     print(f"{'='*50}\n")
 
-    reflection_lm_name = "openai/gpt-5"
     reflection_lm = (
         lambda prompt: litellm.completion(
-            model=reflection_lm_name,
+            model="openai/gpt-5",
             messages=[{"role": "user", "content": prompt}],
             reasoning_effort="medium",
         )
@@ -187,7 +202,7 @@ IMPORTANT:
         dataset_path=args.task_directory
     )
 
-    Path("gepa_terminus2_v2_glm_newjudge2_reflection").mkdir(parents=True, exist_ok=True)
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     # Evaluate testset with initial instruction prompt BEFORE optimization
     testset_results_before_opt = adapter.evaluate(
@@ -196,7 +211,7 @@ IMPORTANT:
         capture_traces=True,
     )
 
-    with open("gepa_terminus2_v2_glm_newjudge2_reflection/testset_results_before_opt.json", "w") as f:
+    with open(f"{args.output_dir}/testset_results_before_opt.json", "w") as f:
         json.dump(
             {
                 "score": sum(trajectory["success"] for trajectory in testset_results_before_opt.trajectories),
@@ -212,18 +227,17 @@ IMPORTANT:
         valset=valset,
         adapter=adapter,
         reflection_lm=reflection_lm,
-        use_wandb=True,
-        max_metric_calls=100,
-        # max_metric_calls=400,
-        reflection_minibatch_size=3,
-        perfect_score=1,
-        skip_perfect_score=False,
-        run_dir="gepa_terminus2_v2_glm_newjudge_threshold_reflection",
+        use_wandb=args.use_wandb,
+        max_metric_calls=args.max_metric_calls,
+        reflection_minibatch_size=args.reflection_minibatch_size,
+        perfect_score=args.perfect_score,
+        skip_perfect_score=args.skip_perfect_score,
+        run_dir=args.output_dir,
     )
 
-    with open("optimized2.txt", "w") as f:
+    with open(args.optimized_prompt_file, "w") as f:
         f.write(optimized_results.best_candidate["instruction_prompt"])
-    print("Saved to optimized2.txt")
+    print(f"Saved optimized prompt to {args.optimized_prompt_file}")
 
     testset_results_after_opt = adapter.evaluate(
         testset,
@@ -231,7 +245,7 @@ IMPORTANT:
         capture_traces=True,
     )
 
-    with open("gepa_terminus2_v2_glm_newjudge2_reflection/optimized_results.json", "w") as f:
+    with open(f"{args.output_dir}/optimized_results.json", "w") as f:
         json.dump(
             {
                 "score": sum(trajectory["success"] for trajectory in testset_results_after_opt.trajectories),

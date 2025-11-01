@@ -24,7 +24,7 @@ def run_agent_tb(
     dataset_name: str = "terminal-bench-core",
     dataset_version: str = "head",
     dataset_path: str | None = None,
-    agent_import_path: str = "train2:Terminus2Wrapper",
+    agent_import_path: str = "train:Terminus2Wrapper",
     n_concurrent: int = 6,
     prompt_template_path: str = "prompt-templates/instruction_prompt.txt",
     api_base: str | None = None,
