@@ -1,6 +1,11 @@
 # GEPA + Terminus 2
 
-To run, first install gepa and terminal-bench
+To run, first install gepa and terminal-bench (or install using conda):
+
+`pip install terminal-bench`
+
+`pip install gepa`
+
 Training command example :
 
 ```
